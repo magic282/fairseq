@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from fairseq import options, utils
 from fairseq.modules import (
     AdaptiveInput, AdaptiveSoftmax, CharacterTokenEmbedder, LayerNorm,
-    LearnedPositionalEmbedding, MultiheadAttention, SinusoidalPositionalEmbedding,
+    MultiheadAttention, PositionalEmbedding, SinusoidalPositionalEmbedding,
 )
 
 from . import (
@@ -804,20 +804,6 @@ def Linear(in_features, out_features, bias=True):
     return m
 
 
-def PositionalEmbedding(num_embeddings, embedding_dim, padding_idx, learned=False):
-    if learned:
-        m = LearnedPositionalEmbedding(
-            num_embeddings + padding_idx + 1, embedding_dim, padding_idx,
-        )
-        nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
-        nn.init.constant_(m.weight[padding_idx], 0)
-    else:
-        m = SinusoidalPositionalEmbedding(
-            embedding_dim, padding_idx, init_size=num_embeddings + padding_idx + 1,
-        )
-    return m
-
-
 @register_model_architecture('transformer_lm', 'transformer_lm')
 def base_lm_architecture(args):
     args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 512)
@@ -830,6 +816,7 @@ def base_lm_architecture(args):
     args.decoder_learned_pos = getattr(args, 'decoder_learned_pos', False)
     args.activation_fn = getattr(args, 'activation_fn', 'relu')
 
+    args.add_bos_token = getattr(args, 'add_bos_token', False)
     args.character_embeddings = getattr(args, 'character_embeddings', False)
 
     args.decoder_output_dim = getattr(args, 'decoder_output_dim', args.decoder_embed_dim)
@@ -927,7 +914,7 @@ def transformer_wmt_en_de(args):
     base_architecture(args)
 
 
-# parameters used in the "Attention Is All You Need" paper (Vaswani, et al, 2017)
+# parameters used in the "Attention Is All You Need" paper (Vaswani et al., 2017)
 @register_model_architecture('transformer', 'transformer_vaswani_wmt_en_de_big')
 def transformer_vaswani_wmt_en_de_big(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
