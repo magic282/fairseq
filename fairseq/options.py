@@ -266,6 +266,8 @@ def add_distributed_training_args(parser):
                        help='port number (not required if using --distributed-init-method)')
     group.add_argument('--device-id', '--local_rank', default=0, type=int,
                        help='which GPU to use (usually configured automatically)')
+    group.add_argument('--distributed-no-spawn', action='store_true',
+                       help='do not spawn multiple processes even if multiple GPUs are visible')
     group.add_argument('--ddp-backend', default='c10d', type=str,
                        choices=['c10d', 'no_c10d'],
                        help='DistributedDataParallel backend')
@@ -422,8 +424,8 @@ def add_generation_args(parser):
                        help='sample hypotheses instead of using beam search')
     group.add_argument('--sampling-topk', default=-1, type=int, metavar='PS',
                        help='sample from top K likely next words instead of all words')
-    group.add_argument('--sampling-temperature', default=1, type=float, metavar='N',
-                       help='temperature for random sampling')
+    group.add_argument('--temperature', default=1., type=float, metavar='N',
+                       help='temperature for generation')
     group.add_argument('--diverse-beam-groups', default=-1, type=int, metavar='N',
                        help='number of groups for Diverse Beam Search')
     group.add_argument('--diverse-beam-strength', default=0.5, type=float, metavar='N',
