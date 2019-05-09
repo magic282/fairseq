@@ -10,7 +10,6 @@ Train a new model on one or across multiple GPUs.
 """
 
 import collections
-import itertools
 import math
 import os
 import random
@@ -116,7 +115,7 @@ def main(args, init_distributed=False):
 
 def reload_train(args, epoch_itr, max_positions, task):
     # nothing needs to be done when the dataset is not sharded.
-    if len(args.data.split(":")) == 1:
+    if "data" not in args or ("data" in args and len(args.data.split(":")) == 1):
         return epoch_itr
     print("| Reloading shard of train data at epoch: ", epoch_itr.epoch)
     task.load_dataset(args.train_subset, combine=True, epoch=epoch_itr.epoch)
@@ -140,7 +139,7 @@ def train(args, trainer, task, epoch_itr):
     """Train the model for one epoch."""
     # Update parameters every N batches
     update_freq = args.update_freq[epoch_itr.epoch - 1] \
-            if epoch_itr.epoch <= len(args.update_freq) else args.update_freq[-1]
+        if epoch_itr.epoch <= len(args.update_freq) else args.update_freq[-1]
 
     # Initialize data iterator
     itr = epoch_itr.next_epoch_itr(

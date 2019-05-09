@@ -9,8 +9,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from . import (
-    BaseFairseqModel, FairseqEncoder, register_model, register_model_architecture,
+from fairseq.models import (
+    BaseFairseqModel,
+    FairseqEncoder,
+    register_model,
+    register_model_architecture,
 )
 from fairseq.modules import (
     SinusoidalPositionalEmbedding,
@@ -56,9 +59,10 @@ class MaskedLMModel(BaseFairseqModel):
                             help='num encoder layers')
         parser.add_argument('--encoder-attention-heads', type=int, metavar='N',
                             help='num encoder attention heads')
-        parser.add_argument('--no-bias-kv', action='store_true',
-                            help='if set, pads attn with zero instead of'
-                            ' adding a learnable bias kv')
+        parser.add_argument('--bias-kv', action='store_true',
+                            help='if set, adding a learnable bias kv')
+        parser.add_argument('--zero-attn', action='store_true',
+                            help='if set, pads attn with zero')
 
         # Arguments related to input and output embeddings
         parser.add_argument('--encoder-embed-dim', type=int, metavar='N',
@@ -96,8 +100,8 @@ class MaskedLMModel(BaseFairseqModel):
                             help='Use gelu activation function in encoder'
                             ' layer')
 
-    def forward(self, tokens, segment_labels):
-        return self.encoder(tokens, segment_labels)
+    def forward(self, src_tokens, segment_labels, **kwargs):
+        return self.encoder(src_tokens, segment_labels, **kwargs)
 
     def max_positions(self):
         return self.encoder.max_positions
@@ -106,10 +110,8 @@ class MaskedLMModel(BaseFairseqModel):
     def build_model(cls, args, task):
         """Build a new model instance."""
 
-        if args.task == 'bert':
-            base_bert_architecture(args)
-        else:
-            xlm_architecture(args)
+        # make sure all arguments are present in older models
+        base_architecture(args)
 
         if not hasattr(args, 'max_positions'):
             args.max_positions = args.tokens_per_sample
@@ -150,6 +152,8 @@ class MaskedLMEncoder(FairseqEncoder):
             use_gelu=args.gelu,
             apply_bert_init=args.apply_bert_init,
             learned_pos_embedding=args.encoder_learned_pos,
+            add_bias_kv=args.bias_kv,
+            add_zero_attn=args.zero_attn,
         )
 
         self.share_input_output_embed = args.share_encoder_input_output_embed
@@ -175,7 +179,7 @@ class MaskedLMEncoder(FairseqEncoder):
                     bias=False
                 )
 
-    def forward(self, tokens, segment_labels, **unused):
+    def forward(self, src_tokens, segment_labels, **unused):
         """
         Forward pass for Masked LM encoder. This first computes the token
         embedding using the token embedding matrix, position embeddings (if
@@ -185,7 +189,7 @@ class MaskedLMEncoder(FairseqEncoder):
         output of the classification_token (see bert_task or cross_lingual_lm
         task for more details).
         Args:
-            - tokens: B x T matrix representing sentences
+            - src_tokens: B x T matrix representing sentences
             - segment_labels: B x T matrix representing segment label for tokens
         Returns:
             - a tuple of the following:
@@ -199,7 +203,7 @@ class MaskedLMEncoder(FairseqEncoder):
                   this is specified in the input arguments.
         """
 
-        inner_states, sentence_rep = self.sentence_encoder(tokens, segment_labels)
+        inner_states, sentence_rep = self.sentence_encoder(src_tokens, segment_labels)
         x = inner_states[-1].transpose(0, 1)
 
         # project back to size of vocabulary
@@ -246,7 +250,8 @@ def base_architecture(args):
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 8)
-    args.no_bias_kv = getattr(args, 'no_bias_kv', False)
+    args.bias_kv = getattr(args, 'bias_kv', False)
+    args.zero_attn = getattr(args, 'zero_attn', False)
 
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 1024)
     args.share_encoder_input_output_embed = getattr(args, 'share_encoder_input_output_embed', False)
@@ -266,7 +271,7 @@ def base_architecture(args):
 
 
 @register_model_architecture('masked_lm', 'bert_base')
-def base_bert_architecture(args):
+def bert_base_architecture(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 768)
     args.share_encoder_input_output_embed = getattr(
         args, 'share_encoder_input_output_embed', True)
@@ -279,10 +284,11 @@ def base_bert_architecture(args):
 
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 12)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 3072)
-    args.no_bias_kv = getattr(args, 'no_bias_kv', True)
+    args.bias_kv = getattr(args, 'bias_kv', False)
+    args.zero_attn = getattr(args, 'zero_attn', False)
 
     args.sent_loss = getattr(args, 'sent_loss', True)
-    args.sentence_class_num = getattr(args, 'sentence-class-num', 2)
+    args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
 
     args.apply_bert_init = getattr(args, 'apply_bert_init', True)
 
@@ -300,7 +306,7 @@ def bert_large_architecture(args):
     args.encoder_layers = getattr(args, 'encoder_layers', 24)
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 16)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
-    base_bert_architecture(args)
+    bert_base_architecture(args)
 
 
 @register_model_architecture('masked_lm', 'xlm_base')
@@ -317,7 +323,8 @@ def xlm_architecture(args):
 
     args.encoder_attention_heads = getattr(args, 'encoder_attention_heads', 8)
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
-    args.no_bias_kv = getattr(args, 'no_bias_kv', True)
+    args.bias_kv = getattr(args, 'bias_kv', False)
+    args.zero_attn = getattr(args, 'zero_attn', False)
 
     args.sent_loss = getattr(args, 'sent_loss', False)
 

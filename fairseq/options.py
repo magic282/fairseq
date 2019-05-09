@@ -127,12 +127,12 @@ def parse_args_and_arch(parser, input_args=None, parse_known=False):
 def get_parser(desc, default_task='translation'):
     # Before creating the true parser, we need to import optional user module
     # in order to eagerly import custom tasks, optimizers, architectures, etc.
-    usr_parser = argparse.ArgumentParser(add_help=False)
+    usr_parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     usr_parser.add_argument('--user-dir', default=None)
     usr_args, _ = usr_parser.parse_known_args()
     import_user_module(usr_args)
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     # fmt: off
     parser.add_argument('--no-progress-bar', action='store_true', help='disable progress bar')
     parser.add_argument('--log-interval', type=int, default=1000, metavar='N',
@@ -198,9 +198,8 @@ def add_preprocess_args(parser):
                        help="number of source words to retain")
     group.add_argument("--alignfile", metavar="ALIGN", default=None,
                        help="an alignment file (optional)")
-    group.add_argument("--output-format", metavar="FORMAT", default="binary",
-                       choices=["binary", "raw"],
-                       help="output format (optional)")
+    parser.add_argument('--dataset-impl', metavar="FORMAT", help='output dataset implementation',
+                        choices=['raw', 'lazy', 'cached', 'mmap'], default='cached')
     group.add_argument("--joined-dictionary", action="store_true",
                        help="Generate joined dictionary")
     group.add_argument("--only-source", action="store_true",
@@ -226,6 +225,8 @@ def add_dataset_args(parser, train=False, gen=False):
                        help='maximum number of sentences in a batch')
     group.add_argument('--required-batch-size-multiple', default=8, type=int, metavar='N',
                        help='batch size will be a multiplier of this value')
+    parser.add_argument('--dataset-impl', metavar="FORMAT", help='output dataset implementation',
+                        choices=['raw', 'lazy', 'cached', 'mmap'], default='cached')
     if train:
         group.add_argument('--train-subset', default='train', metavar='SPLIT',
                            choices=['train', 'valid', 'test'],
