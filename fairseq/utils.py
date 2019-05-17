@@ -9,6 +9,7 @@ from collections import defaultdict
 from typing import Callable
 import copy
 import importlib.util
+import math
 import os
 import sys
 import warnings
@@ -16,7 +17,7 @@ import warnings
 import torch
 import torch.nn.functional as F
 
-from fairseq.modules import gelu, gelu_fast
+from fairseq.modules import gelu, gelu_accurate
 
 
 def load_ensemble_for_inference(filenames, task, model_arg_overrides=None):
@@ -286,6 +287,13 @@ def log_softmax(x, dim, onnx_trace=False):
         return F.log_softmax(x, dim=dim, dtype=torch.float32)
 
 
+def get_perplexity(loss):
+    try:
+        return '{:.2f}'.format(math.pow(2, loss))
+    except OverflowError:
+        return float('inf')
+
+
 def deprecation_warning(message, stacklevel=3):
     # don't use DeprecationWarning, since it's ignored by default
     warnings.warn(message, stacklevel=stacklevel)
@@ -298,6 +306,11 @@ def get_activation_fn(activation: str) -> Callable:
     elif activation == 'gelu':
         return gelu
     elif activation == 'gelu_fast':
-        return gelu_fast
+        deprecation_warning('--activation-fn=gelu_fast has been renamed to gelu_accurate')
+        return gelu_accurate
+    elif activation == 'gelu_accurate':
+        return gelu_accurate
+    elif activation == 'tanh':
+        return F.tanh
     else:
         raise RuntimeError(f"--activation-fn {activation} not supported")

@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from fairseq import utils
 from fairseq.models import (
     BaseFairseqModel,
     FairseqEncoder,
@@ -16,8 +17,9 @@ from fairseq.models import (
     register_model_architecture,
 )
 from fairseq.modules import (
+    LayerNorm,
     SinusoidalPositionalEmbedding,
-    TransformerSentenceEncoder
+    TransformerSentenceEncoder,
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
@@ -89,16 +91,14 @@ class MaskedLMModel(BaseFairseqModel):
         parser.add_argument('--apply-bert-init', action='store_true',
                             help='use custom param initialization for BERT')
 
-        # layer norm layers
-        parser.add_argument('--bert-layer-norm', action='store_true',
-                            help='use custom Layer Norm module for BERT')
-
         # misc params
+        parser.add_argument('--activation-fn', choices=['relu', 'gelu', 'gelu_accurate'],
+                            help='Which activation function to use')
+        parser.add_argument('--pooler-activation-fn',
+                            choices=['relu', 'gelu', 'gelu_accurate', 'tanh'],
+                            help='Which activation function to use for pooler layer.')
         parser.add_argument('--encoder-normalize-before', action='store_true',
                             help='apply layernorm before each encoder block')
-        parser.add_argument('--gelu', action='store_true',
-                            help='Use gelu activation function in encoder'
-                            ' layer')
 
     def forward(self, src_tokens, segment_labels, **kwargs):
         return self.encoder(src_tokens, segment_labels, **kwargs)
@@ -148,9 +148,8 @@ class MaskedLMEncoder(FairseqEncoder):
             num_segments=args.num_segment,
             use_position_embeddings=not args.no_token_positional_embeddings,
             encoder_normalize_before=args.encoder_normalize_before,
-            use_bert_layer_norm=args.bert_layer_norm,
-            use_gelu=args.gelu,
             apply_bert_init=args.apply_bert_init,
+            activation_fn=args.activation_fn,
             learned_pos_embedding=args.encoder_learned_pos,
             add_bias_kv=args.bias_kv,
             add_zero_attn=args.zero_attn,
@@ -160,11 +159,23 @@ class MaskedLMEncoder(FairseqEncoder):
         self.embed_out = None
         self.sentence_projection_layer = None
         self.sentence_out_dim = args.sentence_class_num
+        self.lm_output_learned_bias = None
 
         # Remove head is set to true during fine-tuning
         self.load_softmax = not getattr(args, 'remove_head', False)
 
+        self.masked_lm_pooler = nn.Linear(
+            args.encoder_embed_dim, args.encoder_embed_dim
+        )
+        self.pooler_activation = utils.get_activation_fn(args.pooler_activation_fn)
+
+        self.lm_head_transform_weight = nn.Linear(args.encoder_embed_dim, args.encoder_embed_dim)
+        self.activation_fn = utils.get_activation_fn(args.activation_fn)
+        self.layer_norm = LayerNorm(args.encoder_embed_dim)
+
         if self.load_softmax:
+            self.lm_output_learned_bias = nn.Parameter(torch.zeros(self.vocab_size))
+
             if not self.share_input_output_embed:
                 self.embed_out = nn.Linear(
                     args.encoder_embed_dim,
@@ -195,7 +206,7 @@ class MaskedLMEncoder(FairseqEncoder):
             - a tuple of the following:
                 - logits for predictions in format B x T x C to be used in
                   softmax afterwards
-                - a dictionary of additional data, where 'sentence_rep' contains
+                - a dictionary of additional data, where 'pooled_output' contains
                   the representation for classification_token and 'inner_states'
                   is a list of internal model states used to compute the
                   predictions (similar in ELMO). 'sentence_logits'
@@ -204,7 +215,11 @@ class MaskedLMEncoder(FairseqEncoder):
         """
 
         inner_states, sentence_rep = self.sentence_encoder(src_tokens, segment_labels)
+
         x = inner_states[-1].transpose(0, 1)
+        x = self.layer_norm(self.activation_fn(self.lm_head_transform_weight(x)))
+
+        pooled_output = self.pooler_activation(self.masked_lm_pooler(sentence_rep))
 
         # project back to size of vocabulary
         if self.share_input_output_embed \
@@ -212,13 +227,15 @@ class MaskedLMEncoder(FairseqEncoder):
             x = F.linear(x, self.sentence_encoder.embed_tokens.weight)
         elif self.embed_out is not None:
             x = self.embed_out(x)
+
+        x = x + self.lm_output_learned_bias
         sentence_logits = None
         if self.sentence_projection_layer:
-            sentence_logits = self.sentence_projection_layer(sentence_rep)
+            sentence_logits = self.sentence_projection_layer(pooled_output)
 
         return x, {
             'inner_states': inner_states,
-            'sentence_rep': sentence_rep,
+            'pooled_output': pooled_output,
             'sentence_logits': sentence_logits
         }
 
@@ -236,7 +253,11 @@ class MaskedLMEncoder(FairseqEncoder):
             ] = torch.FloatTensor(1)
         if not self.load_softmax:
             for k in list(state_dict.keys()):
-                if "embed_out.weight" in k or "sentence_projection_layer.weight" in k:
+                if (
+                    "embed_out.weight" in k or
+                    "sentence_projection_layer.weight" in k or
+                    "lm_output_learned_bias" in k
+                ):
                     del state_dict[k]
         return state_dict
 
@@ -245,7 +266,7 @@ class MaskedLMEncoder(FairseqEncoder):
 def base_architecture(args):
     args.dropout = getattr(args, 'dropout', 0.1)
     args.attention_dropout = getattr(args, 'attention_dropout', 0.1)
-    args.act_dropout = getattr(args, 'act_dropout', 0.1)
+    args.act_dropout = getattr(args, 'act_dropout', 0.0)
 
     args.encoder_ffn_embed_dim = getattr(args, 'encoder_ffn_embed_dim', 4096)
     args.encoder_layers = getattr(args, 'encoder_layers', 6)
@@ -263,11 +284,10 @@ def base_architecture(args):
     args.sent_loss = getattr(args, 'sent_loss', False)
 
     args.apply_bert_init = getattr(args, 'apply_bert_init', False)
-    args.bert_layer_norm = getattr(args, 'bert_layer_norm', False)
 
-    args.encoder_normalize_before = getattr(
-        args, 'encoder_normalize_before', False)
-    args.gelu = getattr(args, 'gelu', False)
+    args.activation_fn = getattr(args, 'activation_fn', 'relu')
+    args.pooler_activation_fn = getattr(args, 'pooler_activation_fn', 'tanh')
+    args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
 
 
 @register_model_architecture('masked_lm', 'bert_base')
@@ -287,16 +307,14 @@ def bert_base_architecture(args):
     args.bias_kv = getattr(args, 'bias_kv', False)
     args.zero_attn = getattr(args, 'zero_attn', False)
 
-    args.sent_loss = getattr(args, 'sent_loss', True)
     args.sentence_class_num = getattr(args, 'sentence_class_num', 2)
+    args.sent_loss = getattr(args, 'sent_loss', True)
 
     args.apply_bert_init = getattr(args, 'apply_bert_init', True)
 
-    # TODO: validate setups for layernorm
-    args.encoder_normalize_before = getattr(
-        args, 'encoder_normalize_before', True)
-    args.bert_layer_norm = getattr(args, 'bert_layer_norm', True)
-    args.gelu = getattr(args, 'gelu', True)
+    args.activation_fn = getattr(args, 'activation_fn', 'gelu')
+    args.pooler_activation_fn = getattr(args, 'pooler_activation_fn', 'tanh')
+    args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', True)
     base_architecture(args)
 
 
@@ -328,9 +346,7 @@ def xlm_architecture(args):
 
     args.sent_loss = getattr(args, 'sent_loss', False)
 
-    args.encoder_normalize_before = getattr(
-        args, 'encoder_normalize_before', False)
-    args.bert_layer_norm = getattr(args, 'bert_layer_norm', False)
-    args.gelu = getattr(args, 'gelu', True)
-    args.apply_bert_init = getattr(args, 'apply_bert_init', True)
+    args.activation_fn = getattr(args, 'activation_fn', 'gelu')
+    args.encoder_normalize_before = getattr(args, 'encoder_normalize_before', False)
+    args.pooler_activation_fn = getattr(args, 'pooler_activation_fn', 'tanh')
     base_architecture(args)
