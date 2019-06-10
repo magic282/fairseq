@@ -142,6 +142,8 @@ def get_parser(desc, default_task='translation'):
     parser.add_argument('--tensorboard-logdir', metavar='DIR', default='',
                         help='path to save logs for tensorboard, should match --logdir '
                              'of running tensorboard (default: no tensorboard logging)')
+    parser.add_argument("--tbmf-wrapper", action="store_true",
+                        help="[FB only] ")
     parser.add_argument('--seed', default=1, type=int, metavar='N',
                         help='pseudo random number generator seed')
     parser.add_argument('--cpu', action='store_true', help='use CPU instead of CUDA')
@@ -282,6 +284,9 @@ def add_distributed_training_args(parser):
                        help='don\'t shuffle batches between GPUs; this reduces overall '
                             'randomness and may affect precision but avoids the cost of '
                             're-reading the data')
+    group.add_argument('--find-unused-parameters', default=False, action='store_true',
+                       help='disable unused parameter detection (not applicable to '
+                       'no_c10d ddp-backend')
     # fmt: on
     return group
 
@@ -328,14 +333,16 @@ def add_checkpoint_args(parser):
                        help='path to save checkpoints')
     group.add_argument('--restore-file', default='checkpoint_last.pt',
                        help='filename in save-dir from which to load checkpoint')
-    group.add_argument('--reset-optimizer', action='store_true',
-                       help='if set, does not load optimizer state from the checkpoint')
+    group.add_argument('--reset-dataloader', action='store_true',
+                       help='if set, does not reload dataloader state from the checkpoint')
     group.add_argument('--reset-lr-scheduler', action='store_true',
                        help='if set, does not load lr scheduler state from the checkpoint')
-    group.add_argument('--optimizer-overrides', default="{}", type=str, metavar='DICT',
-                       help='a dictionary used to override optimizer args when loading a checkpoint')
     group.add_argument('--reset-meters', action='store_true',
                        help='if set, does not load meters from the checkpoint')
+    group.add_argument('--reset-optimizer', action='store_true',
+                       help='if set, does not load optimizer state from the checkpoint')
+    group.add_argument('--optimizer-overrides', default="{}", type=str, metavar='DICT',
+                       help='a dictionary used to override optimizer args when loading a checkpoint')
     group.add_argument('--save-interval', type=int, default=1, metavar='N',
                        help='save a checkpoint every N epochs')
     group.add_argument('--save-interval-updates', type=int, default=0, metavar='N',

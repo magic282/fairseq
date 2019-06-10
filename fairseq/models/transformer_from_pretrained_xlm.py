@@ -21,6 +21,7 @@ from fairseq.models.transformer import (
 
 @register_model("transformer_from_pretrained_xlm")
 class TransformerFromPretrainedXLMModel(TransformerModel):
+
     @staticmethod
     def add_args(parser):
         """Add model-specific arguments to the parser."""
@@ -43,13 +44,13 @@ class TransformerFromPretrainedXLMModel(TransformerModel):
         )
 
     @classmethod
-    def build_model(cls, args, task):
+    def build_model(self, args, task, cls_dictionary=MaskedLMDictionary):
         assert hasattr(args, "pretrained_xlm_checkpoint"), (
             "You must specify a path for --pretrained-xlm-checkpoint to use "
             "--arch transformer_from_pretrained_xlm"
         )
-        assert isinstance(task.source_dictionary, MaskedLMDictionary) and isinstance(
-            task.target_dictionary, MaskedLMDictionary
+        assert isinstance(task.source_dictionary, cls_dictionary) and isinstance(
+            task.target_dictionary, cls_dictionary
         ), (
             "You should use a MaskedLMDictionary when using --arch "
             "transformer_from_pretrained_xlm because the pretrained XLM model "
@@ -110,6 +111,7 @@ def upgrade_state_dict_with_xlm_weights(
 
 
 class TransformerEncoderFromPretrainedXLM(TransformerEncoder):
+
     def __init__(self, args, dictionary, embed_tokens):
         super().__init__(args, dictionary, embed_tokens)
         if getattr(args, 'init_decoder_only', False):
@@ -128,12 +130,9 @@ class TransformerEncoderFromPretrainedXLM(TransformerEncoder):
 
 
 class TransformerDecoderFromPretrainedXLM(TransformerDecoder):
-    def __init__(
-        self, args, dictionary, embed_tokens, no_encoder_attn=False, final_norm=True
-    ):
-        super().__init__(
-            args, dictionary, embed_tokens, no_encoder_attn, final_norm
-        )
+
+    def __init__(self, args, dictionary, embed_tokens, no_encoder_attn=False):
+        super().__init__(args, dictionary, embed_tokens, no_encoder_attn)
         if getattr(args, 'init_encoder_only', False):
             # Don't load XLM weights for decoder if --init-encoder-only
             return

@@ -84,7 +84,7 @@ def set_incremental_state(module, incremental_state, key, value):
 def load_align_dict(replace_unk):
     if replace_unk is None:
         align_dict = None
-    elif isinstance(replace_unk, str):
+    elif isinstance(replace_unk, str) and len(replace_unk) > 0:
         # Load alignment dictionary for unknown word replacement if it was passed as an argument.
         align_dict = {}
         with open(replace_unk, 'r') as f:
@@ -311,7 +311,7 @@ def get_activation_fn(activation: str) -> Callable:
     elif activation == 'gelu_accurate':
         return gelu_accurate
     elif activation == 'tanh':
-        return F.tanh
+        return torch.tanh
     else:
         raise RuntimeError(f"--activation-fn {activation} not supported")
 

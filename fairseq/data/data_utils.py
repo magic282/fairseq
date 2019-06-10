@@ -8,7 +8,10 @@
 import contextlib
 import os
 import numpy as np
-from collections import Iterable
+try:
+    from collections.abc import Iterable
+except ImportError:
+    from collections import Iterable
 
 
 def infer_language_pair(path):
@@ -41,12 +44,14 @@ def collate_tokens(values, pad_idx, eos_idx=None, left_pad=False, move_eos_to_be
 
 
 @contextlib.contextmanager
-def numpy_seed(seed):
+def numpy_seed(seed, *addl_seeds):
     """Context manager which seeds the NumPy PRNG with the specified seed and
     restores the state afterward"""
     if seed is None:
         yield
         return
+    if len(addl_seeds) > 0:
+        seed = int(hash((seed, *addl_seeds)) % 1e6)
     state = np.random.get_state()
     np.random.seed(seed)
     try:
