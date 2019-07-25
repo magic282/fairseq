@@ -13,16 +13,17 @@ from collections import OrderedDict
 import numpy as np
 
 from fairseq import tokenizer
-from fairseq.data.masked_lm_dictionary import MaskedLMDictionary
+from fairseq.data.legacy.masked_lm_dictionary import MaskedLMDictionary
 
 from fairseq.data import (
     ConcatDataset,
+    data_utils,
     indexed_dataset,
     TokenBlockDataset,
 )
 
 from fairseq.data import Dictionary
-from fairseq.data.masked_lm_dataset import MaskedLMDataset
+from fairseq.data.legacy.masked_lm_dataset import MaskedLMDataset
 from fairseq.data.multi_corpus_sampled_dataset import MultiCorpusSampledDataset
 
 from . import FairseqTask, register_task
@@ -114,10 +115,7 @@ class CrossLingualLMTask(FairseqTask):
             split_k = split + (str(k) if k > 0 else '')
             path = os.path.join(data_path, split_k)
 
-            ds = indexed_dataset.make_dataset(
-                path, impl=self.args.dataset_impl, fix_lua_indexing=True,
-                dictionary=self.dictionary,
-            )
+            ds = data_utils.load_indexed_dataset(path, self.dictionary, self.args.dataset_impl)
             if ds is None:
                 if k > 0:
                     break

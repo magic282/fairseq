@@ -6,7 +6,7 @@
 # can be found in the PATENTS file in the same directory.
 
 from fairseq import file_utils
-from fairseq.data.transforms import register_bpe
+from fairseq.data.encoders import register_bpe
 
 
 @register_bpe('subword_nmt')
@@ -22,6 +22,8 @@ class SubwordNMTBPE(object):
         # fmt: on
 
     def __init__(self, args):
+        if args.bpe_codes is None:
+            raise ValueError('--bpe-codes is required for --bpe=subword_nmt')
         codes = file_utils.cached_path(args.bpe_codes)
         try:
             from subword_nmt import apply_bpe

@@ -5,13 +5,13 @@
 # the root directory of this source tree. An additional grant of patent rights
 # can be found in the PATENTS file in the same directory.
 
-__all__ = ['pdb']
-__version__ = '0.7.2'
+from .masked_lm_dictionary import BertDictionary, MaskedLMDictionary
+from .block_pair_dataset import BlockPairDataset
+from .masked_lm_dataset import MaskedLMDataset
 
-import fairseq.criterions
-import fairseq.models
-import fairseq.modules
-import fairseq.optim
-import fairseq.optim.lr_scheduler
-import fairseq.pdb
-import fairseq.tasks
+__all__ = [
+    'BertDictionary',
+    'BlockPairDataset',
+    'MaskedLMDataset',
+    'MaskedLMDictionary',
+]

@@ -15,22 +15,19 @@ The model is trained with online responsibility assignment and shared parameteri
 
 The following command will train a `hMoElp` model with `3` experts:
 ```
-$ CUDA_VISIBLE_DEVICES=0 fairseq-train data-bin/wmt17_en_de \
+$ fairseq-train --ddp-backend='no_c10d' \
+  data-bin/wmt17_en_de \
   --max-update 100000 \
   --task translation_moe \
   --method hMoElp --mean-pool-gating-network \
   --num-experts 3 \
-  --arch transformer_vaswani_wmt_en_de --share-all-embeddings \
+  --arch transformer_wmt_en_de --share-all-embeddings \
   --optimizer adam --adam-betas '(0.9, 0.98)' --clip-norm 0.0 \
   --lr-scheduler inverse_sqrt --warmup-init-lr 1e-07 --warmup-updates 4000 \
   --lr 0.0007 --min-lr 1e-09 \
   --dropout 0.1 --weight-decay 0.0 --criterion cross_entropy \
-  --max-tokens 3584 \
-  --update-freq 8
+  --max-tokens 3584
 ```
-
-**Note**: the above command assumes 1 GPU, but accumulates gradients from 8 fwd/bwd passes to simulate training on 8 GPUs.
-You can accelerate training on up to 8 GPUs by adjusting the `CUDA_VISIBLE_DEVICES` and `--update-freq` options accordingly.
 
 ## Translate
 
@@ -58,11 +55,12 @@ Next apply BPE on the fly and run generation for each expert:
 $ BPEROOT=examples/translation/subword-nmt/
 $ BPE_CODE=examples/translation/wmt17_en_de/code
 $ for EXPERT in $(seq 0 2); do \
-    cat wmt14-en-de.extra_refs.tok | grep ^S | cut -f 2 | \
-      python $BPEROOT/apply_bpe.py -c $BPE_CODE | \
-      fairseq-interactive data-bin/wmt17_en_de \
+    cat wmt14-en-de.extra_refs.tok \
+    | grep ^S | cut -f 2 \
+    | fairseq-interactive data-bin/wmt17_en_de \
         --path checkpoints/checkpoint_best.pt \
-        --beam 1 --remove-bpe \
+        --beam 1 \
+        --bpe subword_nmt --bpe-codes $BPE_CODE \
         --buffer-size 500 --max-tokens 6000 \
         --task translation_moe \
         --method hMoElp --mean-pool-gating-network \

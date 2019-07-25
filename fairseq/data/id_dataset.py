@@ -5,13 +5,18 @@
 # the root directory of this source tree. An additional grant of patent rights
 # can be found in the PATENTS file in the same directory.
 
-__all__ = ['pdb']
-__version__ = '0.7.2'
+import torch
 
-import fairseq.criterions
-import fairseq.models
-import fairseq.modules
-import fairseq.optim
-import fairseq.optim.lr_scheduler
-import fairseq.pdb
-import fairseq.tasks
+from . import FairseqDataset
+
+
+class IdDataset(FairseqDataset):
+
+    def __getitem__(self, index):
+        return index
+
+    def __len__(self):
+        return 0
+
+    def collater(self, samples):
+        return torch.tensor(samples)
