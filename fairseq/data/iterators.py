@@ -1,12 +1,11 @@
-# Copyright (c) 2017-present, Facebook, Inc.
-# All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 #
-# This source code is licensed under the license found in the LICENSE file in
-# the root directory of this source tree. An additional grant of patent rights
-# can be found in the PATENTS file in the same directory.
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 
 import itertools
 import math
+import os
 
 import numpy as np
 import torch
@@ -35,6 +34,8 @@ class CountingIterator(object):
 
     def __iter__(self):
         for x in self.iterable:
+            if self.count >= self.len:
+                return
             self.count += 1
             yield x
 
@@ -50,12 +51,27 @@ class CountingIterator(object):
         next(itertools.islice(self.itr, num_to_skip, num_to_skip), None)
         return self
 
+    def take(self, n):
+        """
+        Truncates the iterator to n elements at most.
+        """
+        self.len = min(self.len, n)
+
 
 class EpochBatchIterating(object):
     def __len__(self) -> int:
         raise NotImplementedError
 
     def next_epoch_itr(self, shuffle=True, fix_batches_to_gpus=False):
+        """Return a new iterator over the dataset.
+
+        Args:
+            shuffle (bool, optional): shuffle batches before returning the
+                iterator (default: True).
+            fix_batches_to_gpus: ensure that batches are always
+                allocated to the same shards across epochs. Requires
+                that :attr:`dataset` supports prefetching (default: False).
+        """
         raise NotImplementedError
 
     def end_of_epoch(self) -> bool:
@@ -64,12 +80,15 @@ class EpochBatchIterating(object):
 
     @property
     def iterations_in_epoch(self) -> int:
+        """The number of consumed batches in the current epoch."""
         raise NotImplementedError
 
     def state_dict(self):
+        """Returns a dictionary containing a whole state of the iterator."""
         raise NotImplementedError
 
     def load_state_dict(self, state_dict):
+        """Copies the state of the iterator from the given *state_dict*."""
         raise NotImplementedError
 
 
@@ -77,7 +96,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
     def __init__(
         self, dataset, epoch=0, num_shards=1, shard_id=0,
     ):
-        # assert isinstance(dataset, torch.utils.data.Dataset)
+        assert isinstance(dataset, torch.utils.data.IterableDataset)
         self.dataset = dataset
         self.epoch = epoch
         self._current_epoch_iterator = None
@@ -86,6 +105,7 @@ class StreamingEpochBatchIterator(EpochBatchIterating):
 
     def next_epoch_itr(self, shuffle=True, fix_batches_to_gpus=False):
         self.epoch += 1
+        self.dataset.set_epoch(self.epoch)
         self._current_epoch_iterator = CountingIterator(
             iterable=ShardedIterator(
                 iterable=self.dataset,
@@ -181,6 +201,7 @@ class EpochBatchIterator(EpochBatchIterating):
             self._cur_epoch_itr = self._get_iterator_for_epoch(
                 self.epoch, shuffle, fix_batches_to_gpus=fix_batches_to_gpus,
             )
+        self.dataset.set_epoch(self.epoch)
         return self._cur_epoch_itr
 
     def end_of_epoch(self) -> bool:
@@ -248,6 +269,9 @@ class EpochBatchIterator(EpochBatchIterating):
 
         if offset > 0 and offset >= len(batches):
             return None
+
+        if self.num_workers > 0:
+            os.environ['PYTHONWARNINGS'] = 'ignore:semaphore_tracker:UserWarning'
 
         return CountingIterator(
             torch.utils.data.DataLoader(

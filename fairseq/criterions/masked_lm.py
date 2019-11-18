@@ -1,9 +1,7 @@
-# Copyright (c) 2017-present, Facebook, Inc.
-# All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 #
-# This source code is licensed under the license found in the LICENSE file in
-# the root directory of this source tree. An additional grant of patent rights
-# can be found in the PATENTS file in the same directory.
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 
 import math
 
@@ -32,8 +30,20 @@ class MaskedLmLoss(FairseqCriterion):
         3) logging outputs to display while training
         """
         # compute MLM loss
-        logits = model(**sample['net_input'], last_state_only=True)[0]
+        masked_tokens = sample['target'].ne(self.padding_idx)
+        sample_size = masked_tokens.int().sum().item()
+
+        # (Rare case) When all tokens are masked, the model results in empty
+        # tensor and gives CUDA error.
+        if sample_size == 0:
+            masked_tokens = None
+
+        logits = model(**sample['net_input'], masked_tokens=masked_tokens)[0]
         targets = model.get_targets(sample, [logits])
+
+        if sample_size != 0:
+            targets = targets[masked_tokens]
+
         loss = F.nll_loss(
             F.log_softmax(
                 logits.view(-1, logits.size(-1)),
@@ -44,11 +54,9 @@ class MaskedLmLoss(FairseqCriterion):
             reduction='sum',
             ignore_index=self.padding_idx,
         )
-
-        sample_size = targets.ne(self.padding_idx).int().sum().item()
-
         logging_output = {
             'loss': utils.item(loss.data) if reduce else loss.data,
+            'nll_loss': utils.item(loss.data) if reduce else loss.data,
             'ntokens': sample['ntokens'],
             'nsentences': sample['nsentences'],
             'sample_size': sample_size,
@@ -65,6 +73,7 @@ class MaskedLmLoss(FairseqCriterion):
 
         agg_output = {
             'loss': loss / sample_size / math.log(2),
+            'nll_loss': sum(log.get('nll_loss', 0) for log in logging_outputs) / sample_size / math.log(2) if ntokens > 0 else 0.,
             'ntokens': ntokens,
             'nsentences': nsentences,
             'sample_size': sample_size,

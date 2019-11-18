@@ -1,10 +1,8 @@
 #!/usr/bin/env python3 -u
-# Copyright (c) 2017-present, Facebook, Inc.
-# All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 #
-# This source code is licensed under the license found in the LICENSE file in
-# the root directory of this source tree. An additional grant of patent rights
-# can be found in the PATENTS file in the same directory.
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 """
 Translate raw text with a trained model. Batches data on-the-fly.
 """
@@ -164,7 +162,7 @@ def main(args):
                 hypo_tokens, hypo_str, alignment = utils.post_process_prediction(
                     hypo_tokens=hypo['tokens'].int().cpu(),
                     src_str=src_str,
-                    alignment=hypo['alignment'].int().cpu() if hypo['alignment'] is not None else None,
+                    alignment=hypo['alignment'],
                     align_dict=align_dict,
                     tgt_dict=tgt_dict,
                     remove_bpe=args.remove_bpe,
@@ -176,9 +174,10 @@ def main(args):
                     ' '.join(map(lambda x: '{:.4f}'.format(x), hypo['positional_scores'].tolist()))
                 ))
                 if args.print_alignment:
+                    alignment_str = " ".join(["{}-{}".format(src, tgt) for src, tgt in alignment])
                     print('A-{}\t{}'.format(
                         id,
-                        ' '.join(map(lambda x: str(utils.item(x)), alignment))
+                        alignment_str
                     ))
 
         # update running id counter

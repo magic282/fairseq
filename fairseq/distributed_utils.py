@@ -1,11 +1,8 @@
-# Copyright (c) 2017-present, Facebook, Inc.
-# All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 #
-# This source code is licensed under the license found in the LICENSE file in
-# the root directory of this source tree. An additional grant of patent rights
-# can be found in the PATENTS file in the same directory.
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 
-from collections import namedtuple
 import os
 import pickle
 import socket
@@ -14,7 +11,6 @@ import warnings
 
 import torch
 import torch.distributed as dist
-from torch import nn
 
 from fairseq import utils
 
@@ -91,7 +87,10 @@ def distributed_init(args):
             socket.gethostname(), args.distributed_rank), flush=True)
 
         # perform a dummy all-reduce to initialize the NCCL communicator
-        dist.all_reduce(torch.rand(1).cuda())
+        if torch.cuda.is_available():
+            dist.all_reduce(torch.zeros(1).cuda())
+        else:
+            dist.all_reduce(torch.zeros(1))
 
         suppress_output(is_master(args))
 

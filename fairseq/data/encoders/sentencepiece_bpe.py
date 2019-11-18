@@ -1,9 +1,7 @@
-# Copyright (c) 2017-present, Facebook, Inc.
-# All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 #
-# This source code is licensed under the license found in the LICENSE file in
-# the root directory of this source tree. An additional grant of patent rights
-# can be found in the PATENTS file in the same directory.
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 
 from fairseq import file_utils
 from fairseq.data.encoders import register_bpe
@@ -33,3 +31,13 @@ class SentencepieceBPE(object):
 
     def decode(self, x: str) -> str:
         return x.replace(' ', '').replace('\u2581', ' ').strip()
+
+    def is_beginning_of_word(self, x: str) -> bool:
+        if x in ['<unk>', '<s>', '</s>', '<pad>']:
+            # special elements are always considered beginnings
+            # HACK: this logic is already present in fairseq/tasks/masked_lm.py
+            # but these special tokens are also contained in the sentencepiece
+            # vocabulary which causes duplicate special tokens. This hack makes
+            # sure that they are all taken into account.
+            return True
+        return x.startswith('\u2581')
