@@ -10,14 +10,12 @@ import math
 import numpy as np
 import torch
 from fairseq import utils
-from fairseq.criterions import FairseqCriterion, register_criterion
+from fairseq.criterions import LegacyFairseqCriterion, register_criterion
 from examples.speech_recognition.data.replabels import pack_replabels
-
-from wav2letter.criterion import ASGLoss, CriterionScaleMode
 
 
 @register_criterion("asg_loss")
-class ASGCriterion(FairseqCriterion):
+class ASGCriterion(LegacyFairseqCriterion):
     @staticmethod
     def add_args(parser):
         group = parser.add_argument_group("ASG Loss")
@@ -43,6 +41,8 @@ class ASGCriterion(FairseqCriterion):
         )
 
     def __init__(self, args, task):
+        from wav2letter.criterion import ASGLoss, CriterionScaleMode
+
         super().__init__(args, task)
         self.tgt_dict = task.target_dictionary
         self.eos = self.tgt_dict.eos()

@@ -64,7 +64,7 @@ class TransformerSentenceEncoder(nn.Module):
     Output:
         - a tuple of the following:
             - a list of internal model states used to compute the
-              predictions where each tensor has shape B x T x C
+              predictions where each tensor has shape T x B x C
             - sentence representation associated with first input token
               in format B x C.
     """
@@ -89,8 +89,6 @@ class TransformerSentenceEncoder(nn.Module):
         apply_bert_init: bool = False,
         activation_fn: str = "relu",
         learned_pos_embedding: bool = True,
-        add_bias_kv: bool = False,
-        add_zero_attn: bool = False,
         embed_scale: float = None,
         freeze_embeddings: bool = False,
         n_trans_layers_to_freeze: int = 0,
@@ -143,8 +141,6 @@ class TransformerSentenceEncoder(nn.Module):
                     attention_dropout=attention_dropout,
                     activation_dropout=activation_dropout,
                     activation_fn=activation_fn,
-                    add_bias_kv=add_bias_kv,
-                    add_zero_attn=add_zero_attn,
                     export=export,
                 )
                 for _ in range(num_encoder_layers)
@@ -222,11 +218,7 @@ class TransformerSentenceEncoder(nn.Module):
                 if not last_state_only:
                     inner_states.append(x)
 
-
-        # T x B x C -> B x T x C
-        x = x.transpose(0, 1)
-
-        sentence_rep = x[:, 0, :]
+        sentence_rep = x[0, :, :]
 
         if last_state_only:
             inner_states = [x]

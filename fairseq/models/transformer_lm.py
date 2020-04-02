@@ -26,12 +26,20 @@ class TransformerLanguageModel(FairseqLanguageModel):
 
     @classmethod
     def hub_models(cls):
+
+        def moses_fastbpe(path):
+            return {
+                'path': path,
+                'tokenizer': 'moses',
+                'bpe': 'fastbpe',
+            }
+
         return {
             'transformer_lm.gbw.adaptive_huge': 'https://dl.fbaipublicfiles.com/fairseq/models/lm/adaptive_lm_gbw_huge.tar.bz2',
             'transformer_lm.wiki103.adaptive': 'https://dl.fbaipublicfiles.com/fairseq/models/lm/adaptive_lm_wiki103.tar.bz2',
-            'transformer_lm.wmt19.en': 'https://dl.fbaipublicfiles.com/fairseq/models/lm/wmt19.en.tar.bz2',
-            'transformer_lm.wmt19.de': 'https://dl.fbaipublicfiles.com/fairseq/models/lm/wmt19.de.tar.bz2',
-            'transformer_lm.wmt19.ru': 'https://dl.fbaipublicfiles.com/fairseq/models/lm/wmt19.ru.tar.bz2',
+            'transformer_lm.wmt19.en': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/lm/wmt19.en.tar.bz2'),
+            'transformer_lm.wmt19.de': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/lm/wmt19.de.tar.bz2'),
+            'transformer_lm.wmt19.ru': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/lm/wmt19.ru.tar.bz2'),
         }
 
     def __init__(self, decoder):
@@ -135,7 +143,7 @@ class TransformerLanguageModel(FairseqLanguageModel):
                 options.eval_str_list(args.adaptive_input_cutoff, type=int),
             )
         else:
-            embed_tokens = Embedding(len(task.source_dictionary), args.decoder_input_dim, task.source_dictionary.pad())
+            embed_tokens = cls.build_embedding(args, task.source_dictionary, args.decoder_input_dim)
 
         if args.tie_adaptive_weights:
             assert args.adaptive_input
@@ -147,8 +155,12 @@ class TransformerLanguageModel(FairseqLanguageModel):
         decoder = TransformerDecoder(
             args, task.target_dictionary, embed_tokens, no_encoder_attn=True,
         )
-        return TransformerLanguageModel(decoder)
+        return cls(decoder)
 
+    @classmethod
+    def build_embedding(cls, args, dictionary, embed_dim, path=None):
+        embed_tokens = Embedding(len(dictionary), embed_dim, dictionary.pad())
+        return embed_tokens
 
 @register_model_architecture('transformer_lm', 'transformer_lm')
 def base_lm_architecture(args):
