@@ -9,6 +9,7 @@ Natural Language Generation, Translation, and Comprehension
 
 import logging
 
+import torch
 import torch.nn as nn
 
 from fairseq import utils
@@ -21,6 +22,7 @@ from fairseq.modules.transformer_sentence_encoder import init_bert_params
 
 from .hub_interface import BARTHubInterface
 
+from fairseq.models.fairseq_encoder import EncoderOut
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,12 @@ class BARTModel(TransformerModel):
 
         # We follow BERT's random weight initialization
         self.apply(init_bert_params)
+
+        self.selective_layer = SelectiveLayer(args)
+        if isinstance(self.selective_layer.selective_layer, nn.Linear):
+            self.selective_layer.selective_layer.weight.data.normal_(mean=0.0, std=0.02)
+        if self.selective_layer.selective_layer.bias is not None:
+            self.selective_layer.selective_layer.bias.data.zero_()
 
         self.classification_heads = nn.ModuleDict()
 
@@ -73,6 +81,16 @@ class BARTModel(TransformerModel):
             src_tokens,
             src_lengths=src_lengths,
             **kwargs,
+        )
+        real_encoder_out = encoder_out.encoder_out
+        selected_encoder_out = self.selective_layer(real_encoder_out, encoder_out.encoder_padding_mask)
+        encoder_out = EncoderOut(
+            encoder_out=selected_encoder_out,  # T x B x C
+            encoder_padding_mask=encoder_out.encoder_padding_mask,  # B x T
+            encoder_embedding=encoder_out.encoder_embedding,  # B x T x C
+            encoder_states=encoder_out.encoder_states,  # List[T x B x C]
+            src_tokens=encoder_out.src_tokens,  # B x T
+            src_lengths=encoder_out.src_lengths,  # B x 1
         )
         x, extra = self.decoder(
             prev_output_tokens,
@@ -186,6 +204,22 @@ class BARTModel(TransformerModel):
                 if prefix + 'classification_heads.' + k not in state_dict:
                     logger.info('Overwriting', prefix + 'classification_heads.' + k)
                     state_dict[prefix + 'classification_heads.' + k] = v
+
+
+class SelectiveLayer(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.selective_layer = nn.Linear(args.encoder_embed_dim * 2, args.encoder_embed_dim)
+
+    def forward(self, x, encoder_padding_mask):
+        if encoder_padding_mask is None:
+            avg = torch.sum(x, dim=0, keepdim=True) / x.size(0)
+        else:
+            avg = torch.sum(x, dim=0, keepdim=True) / (encoder_padding_mask.size(1) - encoder_padding_mask.sum(1)).view(
+                1, x.size(1), 1).float()
+        pre_select = torch.sigmoid(self.selective_layer(torch.cat([x, avg.expand_as(x)], dim=2)))
+        x = x * pre_select
+        return x
 
 
 class BARTClassificationHead(nn.Module):
