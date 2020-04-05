@@ -11,6 +11,8 @@ from fairseq import search, utils
 from fairseq.data import data_utils
 from fairseq.models import FairseqIncrementalDecoder
 
+from fairseq.models.fairseq_encoder import EncoderOut
+
 
 class SequenceGenerator(object):
     def __init__(
@@ -528,7 +530,21 @@ class EnsembleModel(torch.nn.Module):
     def forward_encoder(self, encoder_input):
         if not self.has_encoder():
             return None
-        return [model.encoder(**encoder_input) for model in self.models]
+        # ugly hack
+        model = self.models[0]
+        encoder_out = model.encoder(**encoder_input)
+        real_encoder_out = encoder_out.encoder_out
+        selected_encoder_out = model.selective_layer(real_encoder_out, encoder_out.encoder_padding_mask)
+        encoder_out = EncoderOut(
+            encoder_out=selected_encoder_out,  # T x B x C
+            encoder_padding_mask=encoder_out.encoder_padding_mask,  # B x T
+            encoder_embedding=encoder_out.encoder_embedding,  # B x T x C
+            encoder_states=encoder_out.encoder_states,  # List[T x B x C]
+            src_tokens=encoder_out.src_tokens,  # B x T
+            src_lengths=encoder_out.src_lengths,  # B x 1
+        )
+        return [encoder_out]
+        # return [model.encoder(**encoder_input) for model in self.models]
 
     @torch.no_grad()
     def forward_decoder(self, tokens, encoder_outs, temperature=1.):

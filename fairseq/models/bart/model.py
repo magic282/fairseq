@@ -216,7 +216,7 @@ class SelectiveLayer(nn.Module):
             avg = torch.sum(x, dim=0, keepdim=True) / x.size(0)
         else:
             avg = torch.sum(x, dim=0, keepdim=True) / (encoder_padding_mask.size(1) - encoder_padding_mask.sum(1)).view(
-                1, x.size(1), 1).float()
+                1, x.size(1), 1).type(x.type())
         pre_select = torch.sigmoid(self.selective_layer(torch.cat([x, avg.expand_as(x)], dim=2)))
         x = x * pre_select
         return x
